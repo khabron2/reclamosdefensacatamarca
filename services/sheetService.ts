@@ -112,8 +112,8 @@ export const submitComplaint = async (formData: ComplaintFormState): Promise<str
       if (text.includes("moved") || text.includes("deleted") || text.includes("movido") || text.includes("eliminado")) {
         throw new Error("La URL del Script ya no es válida. Genere una Nueva Implementación.");
       }
-      if (text.includes("DriveApp")) {
-         throw new Error("Error de Permisos en Google Script: El dueño debe autorizar el acceso a Drive en el editor de Scripts.");
+      if (text.includes("DriveApp") || text.includes("DocumentApp") || text.includes("permisos")) {
+         throw new Error("Error de Permisos en Google Script: El script no tiene autorización para crear Docs o guardar archivos. El dueño debe re-autorizar en el editor.");
       }
       console.error("Respuesta HTML del servidor:", text);
       throw new Error("Error técnico en el servidor. Revise la consola.");
@@ -124,7 +124,12 @@ export const submitComplaint = async (formData: ComplaintFormState): Promise<str
     if (result.status === 'success') {
       return result.id;
     } else {
-      throw new Error(result.message || 'Error en el servidor');
+      // Manejo específico de errores de Google Script devueltos como JSON
+      let msg = result.message || 'Error en el servidor';
+      if (msg.includes("Permisos necesarios") || msg.includes("auth/documents")) {
+        msg = "Error de Permisos Google: Falta autorización para crear PDFs (DocumentApp). El administrador debe actualizar 'appsscript.json' y re-autorizar.";
+      }
+      throw new Error(msg);
     }
 
   } catch (error: any) {

@@ -1,3 +1,4 @@
+
 export interface Company {
   id: string;
   name: string;
@@ -91,3 +92,16 @@ export const INITIAL_STATE: ComplaintFormState = {
   files: [],
   companies: [INITIAL_COMPANY]
 };
+
+// New Types for Hearings
+export interface HearingSlot {
+  time: string;
+  complaintId: string;
+  claimant: string;
+  defendant: string;
+}
+
+export interface DaySchedule {
+  date: Date;
+  slots: HearingSlot[];
+}

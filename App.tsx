@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   User, MapPin, FileText, Upload, Building2, Send, 
-  Plus, Trash2, CheckCircle2, Wand2, Settings, Loader2, FileBadge
+  Plus, Trash2, CheckCircle2, Wand2, Settings, Loader2, FileBadge, Image as ImageIcon, Link
 } from 'lucide-react';
 import { SectionCard } from './components/ui/SectionCard';
 import { ComplaintFormState, INITIAL_STATE, INITIAL_COMPANY, Company } from './types';
@@ -140,8 +140,11 @@ function App() {
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Reclamo Enviado!</h2>
           <p className="text-2xl font-mono text-institutional font-bold mb-4 tracking-tight">{formData.formId}</p>
-          <p className="text-gray-600 mb-6">
-            Hemos recibido su denuncia correctamente. Se ha enviado una copia en PDF a su correo electrónico.
+          <p className="text-gray-600 mb-2">
+            Hemos recibido su denuncia correctamente. Se ha enviado una copia en PDF con las evidencias adjuntas a su correo electrónico.
+          </p>
+          <p className="text-sm text-gray-500 mb-6 bg-yellow-50 p-2 rounded border border-yellow-100">
+            ⚠️ Por favor revise su carpeta de <strong>SPAM o Correo No Deseado</strong> si no lo recibe en unos minutos.
           </p>
           <button 
             onClick={handleReset}
@@ -405,7 +408,7 @@ function App() {
               <input 
                 type="file" 
                 multiple 
-                accept=".pdf,.doc,.docx,.jpg,.png"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                 onChange={handleFileChange}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
@@ -417,26 +420,40 @@ function App() {
             </div>
             
             <div className="mt-4 space-y-2">
-              <p className="text-sm text-blue-600 font-medium">ℹ️ Adjuntar DNI y factura puede agilizar el proceso.</p>
+              <p className="text-sm text-blue-600 font-medium">ℹ️ Las imágenes (JPG/PNG) se incluirán dentro del PDF de constancia. Otros archivos (PDF/Word) se guardarán como adjuntos.</p>
               
               {formData.files.length > 0 && (
                 <ul className="space-y-2 mt-4">
-                  {formData.files.map((file, idx) => (
-                    <li key={idx} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg text-sm">
-                      <div className="flex items-center gap-2 truncate">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-700 truncate max-w-[200px]">{file.name}</span>
-                        <span className="text-gray-400 text-xs">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={() => removeFile(idx)}
-                        className="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </li>
-                  ))}
+                  {formData.files.map((file, idx) => {
+                    const isImage = file.type.startsWith('image/');
+                    return (
+                      <li key={idx} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg text-sm">
+                        <div className="flex items-center gap-2 truncate">
+                          {isImage ? (
+                            <ImageIcon className="w-4 h-4 text-purple-500" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-gray-400" />
+                          )}
+                          <span className="text-gray-700 truncate max-w-[200px]">{file.name}</span>
+                          <span className="text-gray-400 text-xs ml-1">
+                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                          {isImage ? (
+                             <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-2 hidden sm:inline-block">Se verá en PDF</span>
+                          ) : (
+                             <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded ml-2 hidden sm:inline-block">Adjunto</span>
+                          )}
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => removeFile(idx)}
+                          className="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
