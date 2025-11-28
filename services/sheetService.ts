@@ -40,6 +40,7 @@ export const fetchCompanies = async (): Promise<Company[]> => {
     if (!response.ok) throw new Error('Error fetching companies');
     
     const data = await response.json();
+    console.log(`Empresas cargadas desde Sheet: ${data.length}`);
     return data;
   } catch (error) {
     console.error("Error cargando empresas:", error);
