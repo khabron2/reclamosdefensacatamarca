@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, CalendarDays, Printer, ChevronLeft, ChevronRight, Users, Building2, FileText, ExternalLink, Clock } from 'lucide-react';
-import { fetchComplaints } from '../../services/sheetService';
+import { ArrowLeft, RefreshCw, CalendarDays, Printer, ChevronLeft, ChevronRight, Users, Building2, FileText, ExternalLink, Clock, Edit2, Plus, Trash2, Save, X } from 'lucide-react';
+import { fetchComplaints, fetchHearings, saveHearing, deleteHearing } from '../../services/sheetService';
 import { Complaint, HearingSlot } from '../../types';
 
 interface AdminDashboardProps {
@@ -39,6 +39,7 @@ const formatDateKey = (date: Date) => {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [manualHearings, setManualHearings] = useState<HearingSlot[]>([]);
   const [scheduleMap, setScheduleMap] = useState<Record<string, HearingSlot[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, users: 0, companies: 0 });
@@ -50,22 +51,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     return formatDateKey(tomorrow);
   });
 
+  // Estado del Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<Partial<HearingSlot>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchComplaints();
-      setComplaints(data);
+      // Cargar Reclamos y Audiencias Manuales
+      const [complaintsData, hearingsData] = await Promise.all([
+        fetchComplaints(),
+        fetchHearings()
+      ]);
+
+      setComplaints(complaintsData);
+      setManualHearings(hearingsData);
       
-      const uniqueUsers = new Set(data.map(c => c.email)).size;
-      const uniqueCompanies = new Set(data.map(c => c.denouncedCompany)).size;
+      const uniqueUsers = new Set(complaintsData.map(c => c.email)).size;
+      const uniqueCompanies = new Set(complaintsData.map(c => c.denouncedCompany)).size;
       
       setStats({
-        total: data.length,
+        total: complaintsData.length,
         users: uniqueUsers,
         companies: uniqueCompanies
       });
       
-      calculateFullSchedule(data);
+      calculateFullSchedule(complaintsData, hearingsData);
     } catch (error) {
       console.error("Failed to load dashboard data", error);
     } finally {
@@ -90,13 +102,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     return 'Hábil';
   };
 
-  const calculateFullSchedule = (allComplaints: Complaint[]) => {
-    // Ordenar reclamos: Los más viejos primero (FIFO) para darles prioridad en la agenda.
-    // fetchComplaints devuelve del más nuevo al más viejo (índice 0 = hoy).
-    // Invertimos para asignar primero los reclamos viejos.
-    const pendingComplaints = [...allComplaints].reverse();
-
+  const calculateFullSchedule = (allComplaints: Complaint[], manuals: HearingSlot[]) => {
     const map: Record<string, HearingSlot[]> = {};
+
+    // 1. Colocar Manuales en el Mapa (Prioridad Absoluta)
+    manuals.forEach(h => {
+      const dKey = h.date || '';
+      if (!dKey) return;
+      if (!map[dKey]) map[dKey] = [];
+      map[dKey].push(h);
+    });
+
+    // 2. Identificar reclamos que YA tienen una audiencia manual asignada para no duplicarlos
+    const assignedComplaintIds = new Set(manuals.map(h => h.complaintId).filter(id => id));
+
+    // 3. Filtrar pendientes disponibles (los que no tienen audiencia manual)
+    // Ordenamos viejos primero
+    let pendingComplaints = [...allComplaints].reverse().filter(c => !assignedComplaintIds.has(c.id));
+
     let currentComplaintIndex = 0;
     
     // Empezamos a calcular desde "Mañana"
@@ -105,29 +128,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
     let daysProcessed = 0;
 
-    // Calculamos hasta 365 días o hasta que se acaben los reclamos
+    // 4. Rellenar huecos con automáticos
     while (currentComplaintIndex < pendingComplaints.length && daysProcessed < 365) {
       if (isBusinessDay(calculationDate)) {
         const dateKey = formatDateKey(calculationDate);
-        const dailySlots: HearingSlot[] = [];
+        if (!map[dateKey]) map[dateKey] = [];
+        const dailySlots = map[dateKey];
         
         for (const time of TIME_SLOTS) {
-          for (let i = 0; i < CAPACITY_PER_SLOT; i++) {
+          // Ver cuántos espacios ya ocupan los manuales en esta hora
+          const occupiedCount = dailySlots.filter(s => s.time === time).length;
+          const slotsAvailable = CAPACITY_PER_SLOT - occupiedCount;
+
+          for (let i = 0; i < slotsAvailable; i++) {
             if (currentComplaintIndex < pendingComplaints.length) {
               const comp = pendingComplaints[currentComplaintIndex];
               dailySlots.push({
                 time: time,
                 complaintId: comp.id,
                 claimant: comp.fullName,
-                defendant: comp.denouncedCompany
+                defendant: comp.denouncedCompany,
+                date: dateKey,
+                isManual: false // Marcado como automático
               });
               currentComplaintIndex++;
             }
           }
-        }
-
-        if (dailySlots.length > 0) {
-          map[dateKey] = dailySlots;
         }
       }
       calculationDate.setDate(calculationDate.getDate() + 1);
@@ -136,6 +162,87 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
     setScheduleMap(map);
   };
+
+  // --- ACCIONES DE MODAL ---
+
+  const openEditModal = (slot: HearingSlot) => {
+    setEditingSlot({ ...slot, date: slot.date || viewDate });
+    setIsModalOpen(true);
+  };
+
+  const openAddModal = (time: string) => {
+    setEditingSlot({
+      date: viewDate,
+      time: time,
+      claimant: '',
+      defendant: '',
+      complaintId: '',
+      isManual: true
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveSlot = async () => {
+    if (!editingSlot.claimant || !editingSlot.defendant || !editingSlot.date || !editingSlot.time) {
+      alert("Por favor complete Denunciante y Denunciado");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const slotToSave = { 
+        ...editingSlot, 
+        isManual: true, // Al guardar, se convierte en manual
+      } as HearingSlot;
+
+      // 1. Guardar en Backend
+      await saveHearing(slotToSave);
+
+      // 2. Actualizar estado local inmediatamente para feedback rápido
+      // Remover la versión anterior si existía (por ID o por ser la misma que editamos)
+      const updatedManuals = manualHearings.filter(h => h.id !== slotToSave.id); 
+      // Añadir la nueva/editada (usamos ID temporal si es nuevo hasta recargar)
+      updatedManuals.push({ ...slotToSave, id: slotToSave.id || `temp-${Date.now()}` });
+      
+      setManualHearings(updatedManuals);
+      calculateFullSchedule(complaints, updatedManuals); // Recalcular mezcla
+      
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert("Error guardando audiencia. Verifique conexión.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSlot = async () => {
+    if (!editingSlot.id || !editingSlot.isManual) {
+      if (!editingSlot.isManual) {
+        alert("Esta es una audiencia automática. Para modificarla, edite sus datos y guarde (se convertirá en manual fija).");
+        return;
+      }
+    }
+
+    if (confirm("¿Eliminar esta audiencia manual?")) {
+      setIsSaving(true);
+      try {
+        if (editingSlot.id) {
+          await deleteHearing(editingSlot.id);
+        }
+        // Actualizar local
+        const updatedManuals = manualHearings.filter(h => h.id !== editingSlot.id);
+        setManualHearings(updatedManuals);
+        calculateFullSchedule(complaints, updatedManuals);
+        setIsModalOpen(false);
+      } catch (error) {
+        alert("Error eliminando");
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  // --- RENDER ---
 
   const changeDay = (days: number) => {
     const date = new Date(viewDate + 'T00:00:00');
@@ -231,28 +338,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       for (let i = 0; i < CAPACITY_PER_SLOT; i++) {
         const slot = slotsForTime[i];
         rows.push(
-          <tr key={`${time}-${i}`} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+          <tr key={`${time}-${i}`} className="border-b border-slate-200 hover:bg-slate-50 transition-colors group">
             <td className={`px-6 py-4 text-center font-bold text-slate-700 border-r border-slate-100 ${i === 0 ? '' : 'text-transparent'}`}>
               {time}
             </td>
-            <td className="px-6 py-4">
+            <td className="px-6 py-4 relative">
               {slot ? (
-                <div>
-                  <div className="font-bold text-slate-800 uppercase flex items-center gap-2">
-                    {slot.claimant}
-                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-normal normal-case">
-                      Exp: {slot.complaintId.split('-').pop()}
-                    </span>
+                <div 
+                  onClick={() => openEditModal(slot)}
+                  className={`cursor-pointer p-2 -m-2 rounded hover:bg-blue-50 transition-colors ${slot.isManual ? 'border-l-4 border-blue-400 pl-3' : ''}`}
+                  title={slot.isManual ? "Audiencia Manual (Click para editar)" : "Audiencia Automática (Click para editar/fijar)"}
+                >
+                  <div className="font-bold text-slate-800 uppercase flex items-center gap-2 justify-between">
+                    <span>{slot.claimant}</span>
+                    {slot.isManual && <Edit2 className="w-3 h-3 text-blue-400 opacity-50" />}
                   </div>
-                  <div className="text-sm text-slate-600 mt-1 pl-4 border-l-2 border-institutional/30">
+                  <div className="text-sm text-slate-600 mt-1 pl-4 border-l-2 border-slate-200">
                     <span className="text-xs text-slate-400 mr-1">C/</span>
                     <span className="uppercase font-medium">{slot.defendant}</span>
                   </div>
+                  {slot.complaintId && (
+                    <div className="text-[10px] text-slate-400 mt-1">Ref: {slot.complaintId}</div>
+                  )}
                 </div>
               ) : (
-                <div className="text-slate-300 text-sm italic flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-slate-200"></div>
-                  Espacio disponible
+                <div 
+                  onClick={() => openAddModal(time)}
+                  className="text-slate-300 text-sm italic flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors py-2"
+                >
+                  <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600">
+                    <Plus className="w-3 h-3" />
+                  </div>
+                  <span>Agregar audiencia</span>
                 </div>
               )}
             </td>
@@ -263,7 +380,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     return rows;
   };
 
-  // Obtain last 5 complaints
   const recentComplaints = complaints.slice(0, 5);
 
   return (
@@ -335,35 +451,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {recentComplaints.length > 0 ? (
-                  recentComplaints.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-3 font-medium text-slate-900">
-                        {c.id}
-                        <div className="text-xs text-slate-500 font-normal">
-                          {new Date(c.date).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-3">{c.fullName}</td>
-                      <td className="px-6 py-3 text-slate-600">{c.denouncedCompany}</td>
-                      <td className="px-6 py-3">
-                        {c.pdfUrl ? (
-                          <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
-                            Ver <ExternalLink className="w-3 h-3" />
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 italic">No disponible</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
-                      No hay reclamos registrados aún.
+                {recentComplaints.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 font-medium text-slate-900">
+                      {c.id}
+                      <div className="text-xs text-slate-500 font-normal">
+                        {new Date(c.date).toLocaleDateString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3">{c.fullName}</td>
+                    <td className="px-6 py-3 text-slate-600">{c.denouncedCompany}</td>
+                    <td className="px-6 py-3">
+                      {c.pdfUrl ? (
+                        <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
+                          Ver <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 italic">No disponible</span>
+                      )}
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -373,7 +481,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         <div className="border-t border-slate-200 pt-8">
           <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
             <CalendarDays className="w-6 h-6 text-institutional" />
-            Cronograma de Audiencias Automáticas
+            Cronograma de Audiencias
           </h2>
 
           <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
@@ -439,6 +547,99 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         </div>
 
       </main>
+
+      {/* MODAL DE EDICIÓN / AGREGAR */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+              <h3 className="font-bold">
+                {editingSlot.id ? 'Editar Audiencia' : 'Nueva Audiencia'}
+              </h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
+                  <input 
+                    type="date" 
+                    value={editingSlot.date}
+                    onChange={e => setEditingSlot(prev => ({...prev, date: e.target.value}))}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora</label>
+                  <select 
+                    value={editingSlot.time}
+                    onChange={e => setEditingSlot(prev => ({...prev, time: e.target.value}))}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Denunciante</label>
+                <input 
+                  type="text" 
+                  value={editingSlot.claimant || ''}
+                  onChange={e => setEditingSlot(prev => ({...prev, claimant: e.target.value}))}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase"
+                  placeholder="NOMBRE APELLIDO"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Denunciado</label>
+                <input 
+                  type="text" 
+                  value={editingSlot.defendant || ''}
+                  onChange={e => setEditingSlot(prev => ({...prev, defendant: e.target.value}))}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase"
+                  placeholder="EMPRESA S.A."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ID Expediente (Opcional)</label>
+                <input 
+                  type="text" 
+                  value={editingSlot.complaintId || ''}
+                  onChange={e => setEditingSlot(prev => ({...prev, complaintId: e.target.value}))}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Ej: Cat-Def-2025-0001"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                {editingSlot.isManual && editingSlot.id && (
+                  <button 
+                    onClick={handleDeleteSlot}
+                    disabled={isSaving}
+                    className="flex-1 bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Eliminar
+                  </button>
+                )}
+                <button 
+                  onClick={handleSaveSlot}
+                  disabled={isSaving}
+                  className="flex-[2] bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  {isSaving ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
+                  Guardar Cambios
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

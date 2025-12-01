@@ -95,10 +95,13 @@ export const INITIAL_STATE: ComplaintFormState = {
 
 // New Types for Hearings
 export interface HearingSlot {
+  id?: string; // ID único para audiencias manuales
   time: string;
   complaintId: string;
   claimant: string;
   defendant: string;
+  date?: string; // Fecha asignada (YYYY-MM-DD)
+  isManual?: boolean; // Flag para distinguir manuales de automáticas
 }
 
 export interface DaySchedule {

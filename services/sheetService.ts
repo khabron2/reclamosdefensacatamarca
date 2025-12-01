@@ -1,4 +1,5 @@
-import { Company, ComplaintFormState, Complaint } from '../types';
+
+import { Company, ComplaintFormState, Complaint, HearingSlot } from '../types';
 
 // PEGA AQUÍ TU NUEVA URL OBTENIDA DE "GESTIONAR IMPLEMENTACIONES"
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyifX7p3SbW-PeMxMRdbcy2ONCsDtCQLvxS0dM_6NhOi8U7Fr-olw4ry3WZdQFLpoQ/exec"; 
@@ -34,13 +35,14 @@ export const fetchCompanies = async (): Promise<Company[]> => {
     
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.indexOf("application/json") === -1) {
-      throw new Error("URL del Script inválida o no publicada correctamente (Recibido HTML en vez de JSON).");
+      // Silently fail or warn, but don't crash
+      console.warn("Recibido HTML en getCompanies. Backend podría no estar actualizado.");
+      return [];
     }
 
     if (!response.ok) throw new Error('Error fetching companies');
     
     const data = await response.json();
-    console.log(`Empresas cargadas desde Sheet: ${data.length}`);
     return data;
   } catch (error) {
     console.error("Error cargando empresas:", error);
@@ -71,6 +73,84 @@ export const fetchComplaints = async (): Promise<Complaint[]> => {
     return [];
   }
 };
+
+// --- GESTIÓN DE AUDIENCIAS ---
+
+export const fetchHearings = async (): Promise<HearingSlot[]> => {
+  try {
+    const cleanUrl = SCRIPT_URL.trim();
+    const response = await fetch(`${cleanUrl}?action=getHearings`);
+    
+    // VALIDACIÓN: Verificar si es JSON antes de parsear para evitar el error "Unexpected token 'S'"
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.indexOf("application/json") === -1) {
+      console.warn("El Backend devolvió HTML/Texto en getHearings. Se asume que no hay audiencias manuales o el script es antiguo.");
+      return []; // Retorna vacío para no romper la UI
+    }
+
+    if (!response.ok) throw new Error('Error fetching hearings');
+    
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Error cargando audiencias manuales:", error);
+    return [];
+  }
+};
+
+export const saveHearing = async (hearing: HearingSlot): Promise<any> => {
+  try {
+    const cleanUrl = SCRIPT_URL.trim();
+    const payload = {
+      action: 'saveHearing',
+      ...hearing
+    };
+    
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    });
+
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.indexOf("application/json") === -1) {
+       throw new Error("El Backend no respondió con JSON. Verifica haber implementado la nueva versión del Script.");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error guardando audiencia:", error);
+    throw error;
+  }
+};
+
+export const deleteHearing = async (id: string): Promise<any> => {
+  try {
+    const cleanUrl = SCRIPT_URL.trim();
+    const payload = {
+      action: 'deleteHearing',
+      id: id
+    };
+    
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    });
+
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.indexOf("application/json") === -1) {
+       throw new Error("El Backend no respondió con JSON.");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error eliminando audiencia:", error);
+    throw error;
+  }
+};
+
+// -----------------------------
 
 export const submitComplaint = async (formData: ComplaintFormState): Promise<string> => {
   try {
