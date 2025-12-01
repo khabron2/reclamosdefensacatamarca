@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   User, MapPin, FileText, Upload, Building2, Send, 
@@ -376,15 +377,29 @@ function App() {
                     { id: 'annulment', label: 'Anulación del contrato' },
                     { id: 'other', label: 'Otro' },
                   ].map((item) => (
-                    <label key={item.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                      <input 
-                        type="checkbox"
-                        checked={formData.resolutions[item.id as keyof typeof formData.resolutions]}
-                        onChange={() => handleResolutionChange(item.id as keyof typeof formData.resolutions)}
-                        className="w-4 h-4 text-institutional border-gray-300 rounded focus:ring-institutional" 
-                      />
-                      <span className="text-sm text-gray-700">{item.label}</span>
-                    </label>
+                    <div key={item.id} className={item.id === 'other' && formData.resolutions.other ? "col-span-1 sm:col-span-2" : ""}>
+                      <label className={`flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors ${item.id === 'other' && formData.resolutions.other ? 'bg-gray-50 border-institutional/30' : ''}`}>
+                        <input 
+                          type="checkbox"
+                          checked={formData.resolutions[item.id as keyof typeof formData.resolutions]}
+                          onChange={() => handleResolutionChange(item.id as keyof typeof formData.resolutions)}
+                          className="w-4 h-4 text-institutional border-gray-300 rounded focus:ring-institutional" 
+                        />
+                        <span className="text-sm text-gray-700">{item.label}</span>
+                      </label>
+                      
+                      {item.id === 'other' && formData.resolutions.other && (
+                        <div className="mt-2 ml-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <input
+                            type="text"
+                            value={formData.otherResolutionDetail}
+                            onChange={(e) => handleInputChange('otherResolutionDetail', e.target.value)}
+                            placeholder="Especifique cuál es la solución esperada..."
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-institutional focus:border-transparent outline-none bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

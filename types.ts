@@ -52,6 +52,7 @@ export interface ComplaintFormState {
     annulment: boolean;
     other: boolean;
   };
+  otherResolutionDetail: string; // Detail for "Other" resolution
   specificPetitions: string;
 
   // Documentation
@@ -88,6 +89,7 @@ export const INITIAL_STATE: ComplaintFormState = {
     annulment: false,
     other: false
   },
+  otherResolutionDetail: '',
   specificPetitions: '',
   files: [],
   companies: [INITIAL_COMPANY]
