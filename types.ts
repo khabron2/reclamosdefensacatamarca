@@ -31,6 +31,7 @@ export interface ComplaintFormState {
   // Personal Data
   isOwner: 'yes' | 'no' | null;
   fullName: string;
+  dni: string; // Nuevo campo DNI
   startDate: string;
   phone: string;
   email: string;
@@ -72,6 +73,7 @@ export const INITIAL_STATE: ComplaintFormState = {
   formId: '',
   isOwner: null,
   fullName: '',
+  dni: '', // Inicializar vacío
   startDate: new Date().toISOString().split('T')[0],
   phone: '',
   email: '',

@@ -23,7 +23,6 @@ function App() {
   const [isRefining, setIsRefining] = useState(false);
 
   useEffect(() => {
-    // Ya no generamos ID aleatorio aquí. El ID lo generará el servidor al guardar.
     fetchCompanies().then(setAvailableCompanies);
   }, []);
 
@@ -73,7 +72,6 @@ function App() {
       ...prev,
       companies: prev.companies.map(c => {
         if (c.id === id) {
-          // If company name matches database, auto-fill address if available
           if (field === 'companyName') {
             const found = availableCompanies.find(ac => ac.name === value);
             if (found && found.address) {
@@ -100,7 +98,6 @@ function App() {
     setIsSubmitting(true);
     try {
       const serverId = await submitComplaint(formData);
-      // Actualizamos el estado con el ID real devuelto por el servidor para mostrarlo en la pantalla de éxito
       setFormData(prev => ({ ...prev, formId: serverId }));
       setIsSuccess(true);
     } catch (error: any) {
@@ -117,7 +114,6 @@ function App() {
     setIsSubmitting(false);
   };
 
-  // Render Admin View with Auth Protection
   if (currentView === 'admin') {
     if (isAdminAuthenticated) {
       return <AdminDashboard onBack={() => setCurrentView('form')} />;
@@ -131,7 +127,6 @@ function App() {
     }
   }
 
-  // Render Success View
   if (isSuccess) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -158,10 +153,8 @@ function App() {
     );
   }
 
-  // Render Form View
   return (
     <div className="min-h-screen pb-24">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -181,7 +174,6 @@ function App() {
               </div>
             </div>
             
-            {/* Form ID Badge Placeholder */}
             <div className="bg-gray-100 px-4 py-2 rounded-lg flex items-center gap-3 border border-gray-200 self-start md:self-auto">
               <FileBadge className="w-5 h-5 text-gray-500" />
               <div className="flex flex-col">
@@ -198,7 +190,6 @@ function App() {
       <main className="max-w-4xl mx-auto px-4 py-8">
         <form onSubmit={handleSubmit}>
           
-          {/* 1. Datos Personales */}
           <SectionCard title="Datos Personales" icon={<User className="w-5 h-5" />}>
             <div className="space-y-6">
               <div>
@@ -228,7 +219,7 @@ function App() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
                   <input 
                     type="text" 
@@ -236,6 +227,17 @@ function App() {
                     value={formData.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
                     placeholder="Ej: Juan Pérez"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-institutional focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">DNI</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={formData.dni}
+                    onChange={(e) => handleInputChange('dni', e.target.value)}
+                    placeholder="Sin puntos ni guiones"
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-institutional focus:border-transparent outline-none transition-all"
                   />
                 </div>
@@ -275,11 +277,8 @@ function App() {
             </div>
           </SectionCard>
 
-          {/* 2. Ubicación y Domicilio */}
           <SectionCard title="Ubicación y Domicilio" icon={<MapPin className="w-5 h-5" />}>
             <div className="space-y-6">
-              
-              {/* Barrio */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Barrio</label>
                 <input 
@@ -291,7 +290,6 @@ function App() {
                 />
               </div>
 
-              {/* Calle y Altura */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Calle</label>
@@ -315,7 +313,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Entre calles */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Entre calle</label>
@@ -341,7 +338,6 @@ function App() {
             </div>
           </SectionCard>
 
-          {/* 3. Datos del Reclamo */}
           <SectionCard title="Datos del Reclamo" subtitle="Detalle su situación" icon={<FileText className="w-5 h-5" />}>
             <div className="space-y-6">
               <div>
@@ -417,7 +413,6 @@ function App() {
             </div>
           </SectionCard>
 
-          {/* 4. Documentación */}
           <SectionCard title="Documentación" icon={<Upload className="w-5 h-5" />}>
             <div className="border-2 border-dashed border-institutional/30 bg-institutional/5 rounded-xl p-8 text-center hover:bg-institutional/10 transition-colors cursor-pointer relative">
               <input 
@@ -474,7 +469,6 @@ function App() {
             </div>
           </SectionCard>
 
-          {/* 5. Datos del Denunciado */}
           <SectionCard title="Datos del Denunciado" icon={<Building2 className="w-5 h-5" />}>
             <div className="space-y-8">
               {formData.companies.map((company, index) => (
@@ -536,7 +530,6 @@ function App() {
             </div>
           </SectionCard>
 
-          {/* 6. Botones de Acción */}
           <div className="flex justify-center mt-8">
             <button 
               type="submit"
@@ -560,7 +553,6 @@ function App() {
         </form>
       </main>
 
-      {/* FAB - Admin Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <button 
           onClick={() => setCurrentView('admin')}
